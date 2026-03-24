@@ -371,7 +371,13 @@ async function getToken(){
   const hdr=b64url(JSON.stringify({alg:'RS256',typ:'JWT'}));
   const clm=b64url(JSON.stringify({iss:CLIENT_EMAIL,scope:'https://www.googleapis.com/auth/spreadsheets',aud:'https://oauth2.googleapis.com/token',exp:now+3600,iat:now}));
   const si=`${hdr}.${clm}`;
-  const key=await crypto.subtle.importKey('pkcs8',pemToBuf(PRIVATE_KEY_PEM),{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
+  // Strip PEM headers/footers and decode
+  const pemClean=PRIVATE_KEY_PEM
+    .replace(/-----BEGIN PRIVATE KEY-----/g,'')
+    .replace(/-----END PRIVATE KEY-----/g,'')
+    .replace(/\s+/g,'');
+  const keyBuf=Uint8Array.from(atob(pemClean),c=>c.charCodeAt(0)).buffer;
+  const key=await crypto.subtle.importKey('pkcs8',keyBuf,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['sign']);
   const sig=await crypto.subtle.sign('RSASSA-PKCS1-v1_5',key,new TextEncoder().encode(si));
   const jwt=`${si}.${b64urlBuf(sig)}`;
   const r=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:`grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`});
@@ -399,10 +405,9 @@ async function tryConnectSheets(){
   try{
     const h=await sheetsGet('A1:O1');
     // Ensure headers
-    if(!h.values||h.values[0]?.length<14){
-      await sheetsPut('A1:O1',[HDRS]);
-    }
-    const d=await sheetsGet('A2:O2000');
+    // Always update headers to ensure doneDates column exists
+    await sheetsPut('A1:P1',[HDRS]);
+    const d=await sheetsGet('A2:P2000');
     const rows=(d.values||[]).filter(r=>r[0]);
     if(rows.length>0){
       // Sheet has data — use it (it's the source of truth)
@@ -413,7 +418,7 @@ async function tryConnectSheets(){
       // Sheet empty — save our seed data to it
       const values=prazos.map(pToRow);
       await sheetsPut('A1:O1',[HDRS]);
-      await sheetsPut(`A2:O${values.length+1}`,values);
+      await sheetsPut(`A2:P${values.length+1}`,values);
       setSheetStatus(true,'✓ Google Sheets conectado');
     }
   }catch(e){
@@ -425,8 +430,8 @@ async function tryConnectSheets(){
 async function saveAll(){
   const values=prazos.map(pToRow);
   if(sheetsConnected){
-    await sheetsClear('A2:O2000');
-    if(values.length) await sheetsPut(`A2:O${values.length+1}`,values);
+    await sheetsClear('A2:P2000');
+    if(values.length) await sheetsPut(`A2:P${values.length+1}`,values);
   }
   // Always keep a local backup too
   try{localStorage.setItem('prazos_backup',JSON.stringify(prazos));}catch(e){}
@@ -436,7 +441,7 @@ async function syncFromSheets(){
   if(!sheetsConnected){toast('Sem conexão com o Google Sheets','red');return;}
   showSync('Sincronizando...');
   try{
-    const d=await sheetsGet('A2:O2000');
+    const d=await sheetsGet('A2:P2000');
     const rows=(d.values||[]).filter(r=>r[0]);
     if(rows.length>0){prazos=rows.map(rowToP);render();toast('✓ Sincronizado!','green');}
     else{toast('Planilha vazia — dados locais mantidos','yellow');}
