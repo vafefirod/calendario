@@ -281,9 +281,7 @@
 
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────────────────
-const SHEET_ID='1DYack13sy_khQj1dr184G2azbfPmdkUPp4cCHmEAsxE';
-const SHEET_NAME='Pendencias';
-const API_KEY='AIzaSyC85Qln2Hc-7gVDjkTXftGOUPHwhKLB2jw';
+const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzAvexH-hfxSCtOcg8Vihb2RMLy1RFRg22c6C7HGpy5x_3YYp46SS7lLps2hAlW0OQwzQ/exec';
 
 // ── DADOS EMBUTIDOS ───────────────────────────────────────────────────────────
 const SEED=[
@@ -339,11 +337,26 @@ let cachedToken=null,tokenExpiry=0,sheetsConnected=false;
 // Using simple API Key - no JWT needed
 async function getToken(){return null;} // not used with API key
 
-// ── SHEETS ────────────────────────────────────────────────────────────────────
-const SN=encodeURIComponent(SHEET_NAME);
-async function sheetsGet(range){const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SN}!${range}?key=${API_KEY}`);const d=await r.json();if(d.error)throw new Error(d.error.message);return d;}
-async function sheetsPut(range,values){const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SN}!${range}?valueInputOption=RAW&key=${API_KEY}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values})});const d=await r.json();if(d.error)throw new Error(d.error.message);return d;}
-async function sheetsClear(range){const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${SN}!${range}:clear?key=${API_KEY}`,{method:'POST',headers:{'Content-Type':'application/json'}});const d=await r.json();if(d.error)throw new Error(d.error.message);return d;}
+// ── SHEETS via Apps Script ────────────────────────────────────────────────────
+async function sheetsGet(){
+  const r=await fetch(APPS_SCRIPT_URL+'?action=read');
+  const d=await r.json();
+  if(d.error)throw new Error(d.error);
+  return d;
+}
+async function saveAllToScript(allRows){
+  const r=await fetch(APPS_SCRIPT_URL,{
+    method:'POST',
+    headers:{'Content-Type':'text/plain'},
+    body:JSON.stringify({action:'write',values:allRows})
+  });
+  const d=await r.json();
+  if(d.error)throw new Error(d.error);
+  return d;
+}
+// Keep these as no-ops since we handle everything in saveAll
+async function sheetsPut(){}
+async function sheetsClear(){}
 function rowToP(r){return{id:r[0],pendencia:r[1]||'',cliente:r[2]||'',caso:r[3]||'',equipe:r[4]||'IP',membro:r[5]||'AP',prazoFatal:r[6]||null,prazoInterno:r[7]||null,obs:r[8]||null,done:r[9]==='true',recorrente:r[10]==='true',freq:r[11]||'',diaSemana:r[12]||'',recurStart:r[13]||'',recurEnd:r[14]||'',doneDates:r[15]?r[15].split(',').filter(Boolean):[]};} 
 function pToRow(p){return[p.id,p.pendencia,p.cliente,p.caso,p.equipe,p.membro,p.prazoFatal||'',p.prazoInterno||'',p.obs||'',p.done?'true':'false',p.recorrente?'true':'false',p.freq||'',p.diaSemana||'',p.recurStart||'',p.recurEnd||'',(p.doneDates||[]).join(',')];}
 
@@ -356,22 +369,17 @@ function setSheetStatus(ok,msg){
 // Try to connect to Sheets in background — show data immediately regardless
 async function tryConnectSheets(){
   try{
-    const h=await sheetsGet('A1:O1');
-    // Ensure headers
-    // Always update headers to ensure doneDates column exists
-    await sheetsPut('A1:P1',[HDRS]);
-    const d=await sheetsGet('A2:P2000');
-    const rows=(d.values||[]).filter(r=>r[0]);
+    const d=await sheetsGet();
+    const all=d.values||[];
+    const rows=all.slice(1).filter(r=>r[0]);
     if(rows.length>0){
-      // Sheet has data — use it (it's the source of truth)
       prazos=rows.map(rowToP);
       render();
       setSheetStatus(true,'✓ Google Sheets conectado');
     } else {
-      // Sheet empty — save our seed data to it
-      const values=prazos.map(pToRow);
-      await sheetsPut('A1:O1',[HDRS]);
-      await sheetsPut(`A2:P${values.length+1}`,values);
+      // Sheet empty — save seed data
+      const allRows=[HDRS,...prazos.map(pToRow)];
+      await saveAllToScript(allRows);
       setSheetStatus(true,'✓ Google Sheets conectado');
     }
   }catch(e){
@@ -381,21 +389,21 @@ async function tryConnectSheets(){
 }
 
 async function saveAll(){
-  const values=prazos.map(pToRow);
-  if(sheetsConnected){
-    await sheetsClear('A2:P2000');
-    if(values.length) await sheetsPut(`A2:P${values.length+1}`,values);
-  }
-  // Always keep a local backup too
+  // Always keep local backup
   try{localStorage.setItem('prazos_backup',JSON.stringify(prazos));}catch(e){}
+  if(sheetsConnected){
+    const allRows=[HDRS,...prazos.map(pToRow)];
+    await saveAllToScript(allRows);
+  }
 }
 
 async function syncFromSheets(){
   if(!sheetsConnected){toast('Sem conexão com o Google Sheets','red');return;}
   showSync('Sincronizando...');
   try{
-    const d=await sheetsGet('A2:P2000');
-    const rows=(d.values||[]).filter(r=>r[0]);
+    const d=await sheetsGet();
+    const all=d.values||[];
+    const rows=all.slice(1).filter(r=>r[0]);
     if(rows.length>0){prazos=rows.map(rowToP);render();toast('✓ Sincronizado!','green');}
     else{toast('Planilha vazia — dados locais mantidos','yellow');}
   }catch(e){toast('Erro: '+e.message,'red');}
