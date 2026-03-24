@@ -528,10 +528,23 @@ function render(){
   document.getElementById('ndCount').textContent=active.filter(p=>vis(p)&&!p.prazoFatal&&!p.recorrente).length;
 
   const byDate={};
+  const doneRecurItems=[]; // collect completed recurring occurrences for done section
   function add(ds,p,ro){if(!byDate[ds])byDate[ds]=[];byDate[ds].push({...p,_ro:ro});}
-  prazos.filter(p=>!p.done&&vis(p)).forEach(p=>{
-    if(p.recorrente){getRecurDates(p,year,month).forEach(ds=>{const isDone=(p.doneDates||[]).includes(ds);add(ds,{...p,done:isDone,_recurDate:ds},true);});}
-    else if(p.prazoFatal){const[py,pm]=p.prazoFatal.split('-').map(Number);if(py===year&&pm-1===month)add(p.prazoFatal,p,false);}
+  prazos.filter(p=>vis(p)).forEach(p=>{
+    if(p.recorrente){
+      getRecurDates(p,year,month).forEach(ds=>{
+        const isDone=(p.doneDates||[]).includes(ds);
+        if(isDone){
+          // Completed occurrence goes to done section, not calendar
+          doneRecurItems.push({...p,done:true,_recurDate:ds,_ro:true,_recurDateFmt:fmt(ds)});
+        } else if(!p.done){
+          add(ds,{...p,done:false,_recurDate:ds},true);
+        }
+      });
+    } else if(!p.done&&p.prazoFatal){
+      const[py,pm]=p.prazoFatal.split('-').map(Number);
+      if(py===year&&pm-1===month)add(p.prazoFatal,p,false);
+    }
   });
 
   const grid=document.getElementById('calGrid');grid.innerHTML='';
@@ -542,9 +555,13 @@ function render(){
     const dn=document.createElement('div');dn.className='day-num';dn.innerHTML=d+(ds===ts?' <span class="today-badge">Hoje</span>':'');cell.appendChild(dn);
     const evts=byDate[ds]||[];
     evts.slice(0,3).forEach(p=>{
-      const pill=document.createElement('div');pill.className=`event-pill ${pc(p.equipe)}${p._ro?' recurring':''}`;
+      const isFatal=!p._ro&&p.prazoFatal===ds; // highlight prazo fatal
+      const pill=document.createElement('div');
+      pill.className=`event-pill ${pc(p.equipe)}${p._ro?' recurring':''}${isFatal?' fatal-pill':''}`;
+      if(isFatal)pill.style.borderLeft='3px solid #991B1B';
       const s=p.pendencia.length>28?p.pendencia.slice(0,28)+'…':p.pendencia;
-      pill.innerHTML=`<div class="pill-member-bar" style="background:${mc(p.membro)}"></div><div class="pill-body"><div class="pill-text">${s}${p._ro?'<span class="recur-badge">↻</span>':''}</div><div class="pill-meta">${p.cliente} · <span style="color:${mc(p.membro)};font-weight:600">${p.membro}</span></div></div>`;
+      const fatalBadge=isFatal?'<span style="font-size:7px;background:#991B1B;color:white;border-radius:3px;padding:0 3px;margin-left:3px;font-family:DM Mono,monospace;vertical-align:middle">FATAL</span>':'';
+      pill.innerHTML=`<div class="pill-member-bar" style="background:${mc(p.membro)}"></div><div class="pill-body"><div class="pill-text">${s}${p._ro?'<span class="recur-badge">↻</span>':''}${fatalBadge}</div><div class="pill-meta">${p.cliente} · <span style="color:${mc(p.membro)};font-weight:600">${p.membro}</span></div></div>`;
       pill.onclick=()=>openDetail(p);cell.appendChild(pill);
     });
     if(evts.length>3){const mb=document.createElement('div');mb.className='more-badge';mb.style.cursor='pointer';mb.style.color='var(--ip-accent)';mb.style.fontWeight='600';mb.textContent='+' + (evts.length-3) + ' mais';mb.onclick=(()=>{const e=evts,d=ds;return()=>openDayModal(d,e);})();cell.appendChild(mb);}
@@ -560,15 +577,18 @@ function render(){
   });
   document.getElementById('noDateSec').style.display=noDate.some(p=>vis(p))?'block':'none';
 
-  const done=prazos.filter(p=>p.done&&vis(p));
-  document.getElementById('doneSec').style.display=done.length?'block':'none';
+  // Done: regular tasks + recurring occurrences done this month
+  const doneRegular=prazos.filter(p=>p.done&&vis(p)&&!p.recorrente);
+  const allDone=[...doneRegular,...doneRecurItems.filter(p=>vis(p))];
+  document.getElementById('doneSec').style.display=allDone.length?'block':'none';
   const dl=document.getElementById('doneList');dl.innerHTML='';
-  done.forEach(p=>{
+  allDone.forEach(p=>{
     const item=document.createElement('div');item.className='nd-item done';
-    item.innerHTML=`<div class="nd-member-bar" style="background:${mc(p.membro)};opacity:.4"></div><div class="nd-content"><div class="nd-client">${p.cliente}</div><div class="nd-task">${p.pendencia}</div><div class="nd-tags"><span class="nd-tag ${pc(p.equipe)}">${tl(p.equipe)}</span><span class="nd-tag member">${p.membro}</span>${p.recorrente?`<span class="nd-tag recur">↻ ${recurLabel(p)}</span>`:''}</div></div>`;
+    const dateLabel=p._recurDate?` — ${fmt(p._recurDate)}`:'';
+    item.innerHTML=`<div class="nd-member-bar" style="background:${mc(p.membro)};opacity:.4"></div><div class="nd-content"><div class="nd-client">${p.cliente}${dateLabel}</div><div class="nd-task">${p.pendencia}</div><div class="nd-tags"><span class="nd-tag ${pc(p.equipe)}">${tl(p.equipe)}</span><span class="nd-tag member">${p.membro}</span>${p.recorrente?`<span class="nd-tag recur">↻ ${recurLabel(p)}</span>`:''}</div></div>`;
     item.onclick=()=>openDetail(p);dl.appendChild(item);
   });
-  document.getElementById('doneToggle').textContent=doneOpen?'ocultar':`mostrar (${done.length})`;
+  document.getElementById('doneToggle').textContent=doneOpen?'ocultar':`mostrar (${allDone.length})`;
   document.getElementById('doneList').style.display=doneOpen?'grid':'none';
 }
 function toggleDoneList(){doneOpen=!doneOpen;render();}
