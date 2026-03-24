@@ -270,6 +270,15 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<!-- Day modal -->
+<div class="overlay" id="dayModalOverlay">
+  <div class="modal">
+    <button class="modal-close" onclick="closeDayModal()">✕</button>
+    <div class="modal-task" id="dayModalTitle" style="font-size:16px;margin-bottom:16px"></div>
+    <div id="dayModalList"></div>
+  </div>
+</div>
+
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const SHEET_ID='1DYack13sy_khQj1dr184G2azbfPmdkUPp4cCHmEAsxE';
@@ -439,6 +448,30 @@ function showSync(m){const b=document.getElementById('syncBar');b.textContent=m;
 function hideSync(){document.getElementById('syncBar').style.display='none';}
 
 // ── RECURRENCE ────────────────────────────────────────────────────────────────
+// ── FERIADOS RJ (nacionais + estaduais + municipais) ─────────────────────────
+const FERIADOS=new Set([
+  // 2025 - Nacionais
+  '2025-01-01','2025-03-03','2025-03-04','2025-04-18','2025-04-21','2025-05-01',
+  '2025-06-19','2025-09-07','2025-10-12','2025-11-02','2025-11-15','2025-11-20','2025-12-25',
+  // 2025 - RJ Estadual/Municipal
+  '2025-01-20','2025-04-23',
+  // 2026 - Nacionais
+  '2026-01-01','2026-02-16','2026-02-17','2026-04-03','2026-04-21','2026-05-01',
+  '2026-06-04','2026-09-07','2026-10-12','2026-11-02','2026-11-15','2026-11-20','2026-12-25',
+  // 2026 - RJ Estadual/Municipal
+  '2026-01-20','2026-04-23',
+  // 2027 - Nacionais (previsão)
+  '2027-01-01','2027-02-15','2027-02-16','2027-04-02','2027-04-21','2027-05-01',
+  '2027-05-27','2027-09-07','2027-10-12','2027-11-02','2027-11-15','2027-11-20','2027-12-25',
+  // 2027 - RJ
+  '2027-01-20','2027-04-23',
+]);
+function isDiaUtil(d){
+  const day=d.getDay();
+  if(day===0||day===6)return false; // domingo ou sábado
+  return!FERIADOS.has(toDateStr(d));
+}
+
 function toDateStr(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function getRecurDates(p,y,m){
   if(!p.recorrente)return[];
@@ -446,7 +479,12 @@ function getRecurDates(p,y,m){
   const end=p.recurEnd?new Date(p.recurEnd+'T12:00:00'):new Date(y,m+6,1);
   const mS=new Date(y,m,1),mE=new Date(y,m+1,0);
   const dates=[],cur=new Date(Math.max(start.getTime(),mS.getTime()));cur.setHours(12,0,0,0);
-  if(p.freq==='diaria'){while(cur<=mE&&cur<=end){if(cur>=mS)dates.push(toDateStr(cur));cur.setDate(cur.getDate()+1);}}
+  if(p.freq==='diaria'){
+    while(cur<=mE&&cur<=end){
+      if(cur>=mS&&isDiaUtil(cur))dates.push(toDateStr(cur));
+      cur.setDate(cur.getDate()+1);
+    }
+  }
   else if(p.freq==='semanal'){const td=parseInt(p.diaSemana)||0;while(cur.getDay()!==td)cur.setDate(cur.getDate()+1);while(cur<=mE&&cur<=end){if(cur>=mS)dates.push(toDateStr(cur));cur.setDate(cur.getDate()+7);}}
   else if(p.freq==='quinzenal'){const td=parseInt(p.diaSemana)||0;while(cur.getDay()!==td)cur.setDate(cur.getDate()+1);while(cur<=mE&&cur<=end){if(cur>=mS)dates.push(toDateStr(cur));cur.setDate(cur.getDate()+14);}}
   else if(p.freq==='mensal'){const dom=start.getDate();const c=new Date(y,m,dom,12);if(c>=start&&c<=end&&c>=mS&&c<=mE)dates.push(toDateStr(c));}
@@ -509,7 +547,7 @@ function render(){
       pill.innerHTML=`<div class="pill-member-bar" style="background:${mc(p.membro)}"></div><div class="pill-body"><div class="pill-text">${s}${p._ro?'<span class="recur-badge">↻</span>':''}</div><div class="pill-meta">${p.cliente} · <span style="color:${mc(p.membro)};font-weight:600">${p.membro}</span></div></div>`;
       pill.onclick=()=>openDetail(p);cell.appendChild(pill);
     });
-    if(evts.length>3){const mb=document.createElement('div');mb.className='more-badge';mb.textContent=`+${evts.length-3} mais`;cell.appendChild(mb);}
+    if(evts.length>3){const mb=document.createElement('div');mb.className='more-badge';mb.style.cursor='pointer';mb.style.color='var(--ip-accent)';mb.style.fontWeight='600';mb.textContent='+' + (evts.length-3) + ' mais';mb.onclick=(()=>{const e=evts,d=ds;return()=>openDayModal(d,e);})();cell.appendChild(mb);}
     grid.appendChild(cell);
   }
 
@@ -534,6 +572,22 @@ function render(){
   document.getElementById('doneList').style.display=doneOpen?'grid':'none';
 }
 function toggleDoneList(){doneOpen=!doneOpen;render();}
+
+// ── DAY MODAL ────────────────────────────────────────────────────────────────
+function openDayModal(ds,evts){
+  const[y,m,d]=ds.split('-');
+  document.getElementById('dayModalTitle').textContent=`${d}/${m}/${y} — ${evts.length} pendências`;
+  const list=document.getElementById('dayModalList');list.innerHTML='';
+  evts.forEach(p=>{
+    const item=document.createElement('div');
+    item.style.cssText='display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer;';
+    item.innerHTML=`<div style="width:4px;border-radius:4px;background:${mc(p.membro)};flex-shrink:0"></div><div><div style="font-size:13px;font-weight:500;margin-bottom:3px">${p.pendencia}</div><div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace">${p.cliente} · <span style="color:${mc(p.membro)};font-weight:600">${p.membro}</span> · ${tl(p.equipe)}</div></div>`;
+    item.onclick=()=>{closeDayModal();openDetail(p);};
+    list.appendChild(item);
+  });
+  document.getElementById('dayModalOverlay').classList.add('open');
+}
+function closeDayModal(){document.getElementById('dayModalOverlay').classList.remove('open');}
 
 // ── DETAIL ────────────────────────────────────────────────────────────────────
 function openDetail(p){
@@ -610,7 +664,8 @@ async function saveForm(){
 }
 
 function toast(msg,type){const t=document.getElementById('toast');t.textContent=msg;t.className=`toast show${type?' '+type:''}`;setTimeout(()=>t.className='toast',3000);}
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDetail();closeForm();}});
+document.getElementById('dayModalOverlay').onclick=function(e){if(e.target===this)closeDayModal();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDetail();closeForm();closeDayModal();}});
 
 // ── INIT — show data immediately, connect Sheets in background ────────────────
 // First check localStorage for any newer saved data
