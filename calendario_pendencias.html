@@ -351,7 +351,7 @@ const SEED=[
 
 const MEMBERS={AP:{label:'AP',color:'#7C3AED',light:'#EDE9FE'},PP:{label:'PP',color:'#0891B2',light:'#E0F7FA'},GD:{label:'GD',color:'#D97706',light:'#FEF3C7'},VR:{label:'VR',color:'#BE185D',light:'#FCE7F3'},LA:{label:'LA',color:'#059669',light:'#D1FAE5'},JF:{label:'JF',color:'#EA580C',light:'#FFEDD5'},IP:{label:'IP',color:'#1D4ED8',light:'#DBEAFE'},EB:{label:'EB',color:'#1B6B3A',light:'#D1FAE5'},OE:{label:'Outra equipe',color:'#64748B',light:'#F1F5F9'}};
 function mc(m,p='color'){return(MEMBERS[m]||MEMBERS.OE)[p];}
-const HDRS=['id','pendencia','cliente','caso','equipe','membro','prazoFatal','prazoInterno','obs','done','recorrente','freq','diaSemana','recurStart','recurEnd'];
+const HDRS=['id','pendencia','cliente','caso','equipe','membro','prazoFatal','prazoInterno','obs','done','recorrente','freq','diaSemana','recurStart','recurEnd','doneDates'];
 const FREQ_LABELS={diaria:'Diária',semanal:'Semanal',quinzenal:'Quinzenal',mensal:'Mensal'};
 const DAYS=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
@@ -385,8 +385,8 @@ async function sheetsGet(range){const t=await getToken();const r=await fetch(`ht
 async function sheetsPut(range,values){const t=await getToken();const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}!${range}?valueInputOption=RAW`,{method:'PUT',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'},body:JSON.stringify({values})});const d=await r.json();if(d.error)throw new Error(d.error.message);return d;}
 async function sheetsClear(range){const t=await getToken();const r=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(SHEET_NAME)}!${range}:clear`,{method:'POST',headers:{Authorization:'Bearer '+t,'Content-Type':'application/json'}});const d=await r.json();if(d.error)throw new Error(d.error.message);return d;}
 
-function rowToP(r){return{id:r[0],pendencia:r[1]||'',cliente:r[2]||'',caso:r[3]||'',equipe:r[4]||'IP',membro:r[5]||'AP',prazoFatal:r[6]||null,prazoInterno:r[7]||null,obs:r[8]||null,done:r[9]==='true',recorrente:r[10]==='true',freq:r[11]||'',diaSemana:r[12]||'',recurStart:r[13]||'',recurEnd:r[14]||''};}
-function pToRow(p){return[p.id,p.pendencia,p.cliente,p.caso,p.equipe,p.membro,p.prazoFatal||'',p.prazoInterno||'',p.obs||'',p.done?'true':'false',p.recorrente?'true':'false',p.freq||'',p.diaSemana||'',p.recurStart||'',p.recurEnd||''];}
+function rowToP(r){return{id:r[0],pendencia:r[1]||'',cliente:r[2]||'',caso:r[3]||'',equipe:r[4]||'IP',membro:r[5]||'AP',prazoFatal:r[6]||null,prazoInterno:r[7]||null,obs:r[8]||null,done:r[9]==='true',recorrente:r[10]==='true',freq:r[11]||'',diaSemana:r[12]||'',recurStart:r[13]||'',recurEnd:r[14]||'',doneDates:r[15]?r[15].split(',').filter(Boolean):[]};} 
+function pToRow(p){return[p.id,p.pendencia,p.cliente,p.caso,p.equipe,p.membro,p.prazoFatal||'',p.prazoInterno||'',p.obs||'',p.done?'true':'false',p.recorrente?'true':'false',p.freq||'',p.diaSemana||'',p.recurStart||'',p.recurEnd||'',(p.doneDates||[]).join(',')];}
 
 function setSheetStatus(ok,msg){
   sheetsConnected=ok;
@@ -399,7 +399,7 @@ async function tryConnectSheets(){
   try{
     const h=await sheetsGet('A1:O1');
     // Ensure headers
-    if(!h.values||h.values[0]?.length<HDRS.length){
+    if(!h.values||h.values[0]?.length<14){
       await sheetsPut('A1:O1',[HDRS]);
     }
     const d=await sheetsGet('A2:O2000');
@@ -530,7 +530,7 @@ function render(){
   const byDate={};
   function add(ds,p,ro){if(!byDate[ds])byDate[ds]=[];byDate[ds].push({...p,_ro:ro});}
   prazos.filter(p=>!p.done&&vis(p)).forEach(p=>{
-    if(p.recorrente){getRecurDates(p,year,month).forEach(ds=>add(ds,p,true));}
+    if(p.recorrente){getRecurDates(p,year,month).forEach(ds=>{const isDone=(p.doneDates||[]).includes(ds);add(ds,{...p,done:isDone,_recurDate:ds},true);});}
     else if(p.prazoFatal){const[py,pm]=p.prazoFatal.split('-').map(Number);if(py===year&&pm-1===month)add(p.prazoFatal,p,false);}
   });
 
@@ -599,17 +599,30 @@ function openDetail(p){
   const rr=document.getElementById('dRecurRow');
   if(p.recorrente){rr.style.display='flex';document.getElementById('dRecur').textContent=recurLabel(p);}else{rr.style.display='none';}
   const obs=document.getElementById('dObs');if(p.obs){obs.textContent='⚠️ '+p.obs;obs.style.display='block';}else{obs.style.display='none';}
-  const db=document.getElementById('dDoneBtn');db.textContent=p.done?'↩ Reabrir':'✓ Marcar como concluída';db.className=p.done?'btn-done undo':'btn-done';db.onclick=()=>toggleDone(p.id);
+  const db=document.getElementById('dDoneBtn');db.textContent=p.done?'↩ Reabrir':'✓ Marcar como concluída';db.className=p.done?'btn-done undo':'btn-done';db.onclick=()=>toggleDone(p.id,p._ro?p._recurDate:null);
   document.getElementById('detailOverlay').classList.add('open');
 }
 function closeDetail(){document.getElementById('detailOverlay').classList.remove('open');currentId=null;}
 document.getElementById('detailOverlay').onclick=function(e){if(e.target===this)closeDetail();};
 
-async function toggleDone(id){
-  const p=prazos.find(x=>x.id===id);if(!p)return;p.done=!p.done;closeDetail();render();
-  showSync('Salvando...');
-  try{await saveAll();hideSync();toast(p.done?'✓ Concluída':'↩ Reaberta','green');}
-  catch(e){hideSync();toast('Erro ao salvar: '+e.message,'red');}
+async function toggleDone(id,recurDate){
+  const p=prazos.find(x=>x.id===id);if(!p)return;
+  if(p.recorrente&&recurDate){
+    // For recurring tasks: toggle just that specific date
+    if(!p.doneDates)p.doneDates=[];
+    const idx=p.doneDates.indexOf(recurDate);
+    if(idx>=0){p.doneDates.splice(idx,1);}else{p.doneDates.push(recurDate);}
+    const isDone=p.doneDates.includes(recurDate);
+    closeDetail();render();
+    showSync('Salvando...');
+    try{await saveAll();hideSync();toast(isDone?'✓ Ocorrência concluída':'↩ Ocorrência reaberta','green');}
+    catch(e){hideSync();toast('Erro ao salvar: '+e.message,'red');}
+  } else {
+    p.done=!p.done;closeDetail();render();
+    showSync('Salvando...');
+    try{await saveAll();hideSync();toast(p.done?'✓ Concluída':'↩ Reaberta','green');}
+    catch(e){hideSync();toast('Erro ao salvar: '+e.message,'red');}
+  }
 }
 async function deleteCurrent(){
   if(!currentId||!confirm('Excluir esta pendência?'))return;
