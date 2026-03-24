@@ -236,7 +236,7 @@
         <select id="fEq"><option value="IP">Equipe IP</option><option value="VR">Equipe VR</option><option value="IPVR">Equipe IP e VR</option></select>
       </div>
       <div class="fr"><label>Membro *</label>
-        <select id="fMem"><option value="AP">AP</option><option value="PP">PP</option><option value="GD">GD</option><option value="VR">VR</option><option value="LA">LA</option><option value="JF">JF</option><option value="IP">IP</option><option value="OE">Outra equipe</option></select>
+        <select id="fMem"><option value="AP">AP</option><option value="PP">PP</option><option value="GD">GD</option><option value="VR">VR</option><option value="LA">LA</option><option value="JF">JF</option><option value="IP">IP</option><option value="EB">EB</option><option value="OE">Outra equipe</option></select>
       </div>
     </div>
     <label class="recur-toggle"><input type="checkbox" id="fIsRecurring" onchange="toggleRecurBox()"><span>🔁 Tarefa recorrente</span></label>
@@ -340,7 +340,7 @@ const SEED=[
   {id:'34',pendencia:'Envio lista de credores para novas reuniões',cliente:'Casa e Vídeo',caso:'Tutela Cautelar',equipe:'IP',membro:'PP',prazoFatal:null,prazoInterno:null,obs:null,done:false,recorrente:false,freq:'',diaSemana:'',recurStart:'',recurEnd:''},
 ];
 
-const MEMBERS={AP:{label:'AP',color:'#7C3AED',light:'#EDE9FE'},PP:{label:'PP',color:'#0891B2',light:'#E0F7FA'},GD:{label:'GD',color:'#D97706',light:'#FEF3C7'},VR:{label:'VR',color:'#BE185D',light:'#FCE7F3'},LA:{label:'LA',color:'#059669',light:'#D1FAE5'},JF:{label:'JF',color:'#EA580C',light:'#FFEDD5'},IP:{label:'IP',color:'#1D4ED8',light:'#DBEAFE'},OE:{label:'Outra equipe',color:'#64748B',light:'#F1F5F9'}};
+const MEMBERS={AP:{label:'AP',color:'#7C3AED',light:'#EDE9FE'},PP:{label:'PP',color:'#0891B2',light:'#E0F7FA'},GD:{label:'GD',color:'#D97706',light:'#FEF3C7'},VR:{label:'VR',color:'#BE185D',light:'#FCE7F3'},LA:{label:'LA',color:'#059669',light:'#D1FAE5'},JF:{label:'JF',color:'#EA580C',light:'#FFEDD5'},IP:{label:'IP',color:'#1D4ED8',light:'#DBEAFE'},EB:{label:'EB',color:'#1B6B3A',light:'#D1FAE5'},OE:{label:'Outra equipe',color:'#64748B',light:'#F1F5F9'}};
 function mc(m,p='color'){return(MEMBERS[m]||MEMBERS.OE)[p];}
 const HDRS=['id','pendencia','cliente','caso','equipe','membro','prazoFatal','prazoInterno','obs','done','recorrente','freq','diaSemana','recurStart','recurEnd'];
 const FREQ_LABELS={diaria:'Diária',semanal:'Semanal',quinzenal:'Quinzenal',mensal:'Mensal'};
