@@ -348,7 +348,7 @@ async function saveAllToScript(allRows){
   const r=await fetch(APPS_SCRIPT_URL,{
     method:'POST',
     headers:{'Content-Type':'text/plain'},
-    body:JSON.stringify({action:'write',values:allRows})
+    body:JSON.stringify({values:allRows})
   });
   const d=await r.json();
   if(d.error)throw new Error(d.error);
